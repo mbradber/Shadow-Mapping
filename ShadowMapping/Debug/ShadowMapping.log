@@ -1,0 +1,4 @@
+﻿  Main.cpp
+  c:\program files (x86)\microsoft directx sdk (february 2010)\include\dinput.h: DIRECTINPUT_VERSION undefined. Defaulting to version 0x0800
+c:\users\acer\desktop\shadowmapping\shadowmapping\main.cpp(64): warning C4305: 'argument' : truncation from 'double' to 'FLOAT'
+  ShadowMapping.vcxproj -> c:\users\acer\Desktop\ShadowMapping\ShadowMapping\Debug\ShadowMapping.exe
