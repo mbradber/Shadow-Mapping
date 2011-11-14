@@ -11,6 +11,7 @@ public:
 	void init(D3DXVECTOR3 pos, D3DXVECTOR3 target, D3DXVECTOR3 up);
 	void Update(BYTE* keyboard, DIMOUSESTATE mouse, float delta);
 	D3DXMATRIX GetCameraView() const {return cameraViewMatrix;}
+	D3DXVECTOR3 GetCameraPosition() const {return cameraPosition;}
 
 private:
 	//camera propterties

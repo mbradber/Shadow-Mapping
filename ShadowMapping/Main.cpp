@@ -2,6 +2,7 @@
 #include"Utility.h"
 #include"Camera.h"
 #include"Cube.h"
+#include"Lights.h"
 
 class ShadowMapping: public DXApp
 {
@@ -19,24 +20,36 @@ private:
 
 	HINSTANCE hInstance;
 	
+	//Effect variables
 	D3DXMATRIX worldMatrix, viewMatrix, projMatrix, wvpMatrix;
-	ID3D10EffectMatrixVariable * pWVP;
-
-	ID3D10InputLayout* pcVertexLayout;
+	ID3D10EffectMatrixVariable* pWVP;
+	ID3D10EffectMatrixVariable* pWorldMatrix;
+	ID3D10EffectVariable* fxEyePos;
+	ID3D10EffectVariable* fxLightSource;
 
 	ID3D10Effect* pEffect;
 	ID3D10EffectTechnique* pTechnique;
 	ID3D10EffectPass* pPass;
 	D3D10_PASS_DESC passDesc;
 
+	ID3D10InputLayout* pcVertexLayout;
+
 	Camera camera;
 	Cube cube;
+	Light lightSource;
 };
 
 ShadowMapping::ShadowMapping(HINSTANCE hi):
 hInstance(hi)
 {
+	//clear the memory for the light source
+	ZeroMemory(&lightSource, sizeof(Light));
 
+	//set the light source attributes
+	lightSource.direction = D3DXVECTOR4(0, 0, 1, NULL);
+	lightSource.ambient = D3DXCOLOR(0.2f, 0.2f, 0.2f, 1.0f);
+	lightSource.diffuse = WHITE;
+	lightSource.specular = WHITE;
 }
 
 ShadowMapping::~ShadowMapping()
@@ -78,11 +91,14 @@ void ShadowMapping::initFX()
 	pPass->GetDesc(&passDesc);
 
 	pWVP = pEffect->GetVariableByName("wvp")->AsMatrix();
+	pWorldMatrix = pEffect->GetVariableByName("worldMatrix")->AsMatrix();
+	fxEyePos = pEffect->GetVariableByName("eyePos");
+	fxLightSource = pEffect->GetVariableByName("lightSource");
 }
 
 void ShadowMapping::buildLayout()
 {
-    D3D10_INPUT_ELEMENT_DESC Layout[] =
+    D3D10_INPUT_ELEMENT_DESC posColLayout[] =
     {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D10_APPEND_ALIGNED_ELEMENT,
             D3D10_INPUT_PER_VERTEX_DATA, 0},
@@ -91,7 +107,15 @@ void ShadowMapping::buildLayout()
             D3D10_INPUT_PER_VERTEX_DATA, 0}
     };
 
-    mDevice->CreateInputLayout(Layout, 2, passDesc.pIAInputSignature,
+	D3D10_INPUT_ELEMENT_DESC posNormLayout[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D10_INPUT_PER_VERTEX_DATA, 0},
+		{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D10_INPUT_PER_VERTEX_DATA, 0},
+		{"DIFFUSE",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D10_INPUT_PER_VERTEX_DATA, 0},
+		{"SPECULAR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 40, D3D10_INPUT_PER_VERTEX_DATA, 0}
+	};
+
+    mDevice->CreateInputLayout(posNormLayout, 4, passDesc.pIAInputSignature,
 		passDesc.IAInputSignatureSize,&pcVertexLayout);
 }
 
@@ -99,8 +123,11 @@ void ShadowMapping::updateScene(float delta)
 {
 	DXApp::updateScene(delta);
 
+	//detect user input
 	detectInput();
+	//update the camera based on the input
 	camera.Update(keystate, mouseState, delta);
+	//retrieve the view matrix from the camera object
 	viewMatrix = camera.GetCameraView();
 }
 
@@ -108,17 +135,25 @@ void ShadowMapping::draw()
 {
 	DXApp::draw();
 
+	//set up the input assembler
 	mDevice->IASetInputLayout(pcVertexLayout);
 	mDevice->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+	//calculate the world-view-projection matrix
 	D3DXMatrixIdentity(&worldMatrix);
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 
+	//set the shader variables
+	fxEyePos->SetRawValue(&camera.GetCameraPosition(), 0, sizeof(D3DXVECTOR3));
+	fxLightSource->SetRawValue(&lightSource, 0, sizeof(Light));
+	pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	pWVP->SetMatrix((float*)&wvpMatrix);
 
+	//apply the shader pass and draw the the cube
 	pPass->Apply(0);
 	cube.draw();
 
+	//present the back buffer
 	mSwapChain->Present(0, 0);
 }
 

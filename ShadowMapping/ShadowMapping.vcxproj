@@ -87,6 +87,7 @@
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Cube.h" />
     <ClInclude Include="DXApp.h" />
+    <ClInclude Include="Lights.h" />
     <ClInclude Include="Timer.h" />
     <ClInclude Include="Utility.h" />
     <ClInclude Include="Vertices.h" />
