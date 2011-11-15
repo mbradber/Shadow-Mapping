@@ -51,6 +51,15 @@ float4 PS(vsOut pIn):SV_TARGET
 
 	if(diffuseFactor > 0)
 	{
+		float sp = max(pIn.spec.a, 1);
+		float3 eyeVec = normalize(eyePos - pIn.posW);
+		float3 reflection = reflect(lightSource.direction, pIn.normalW);
+
+		float sFactor = dot(reflection, eyeVec);
+		sFactor = max(sFactor, 0);
+		sFactor = pow(sFactor, sp);
+
+		calculatedColor += (sFactor * pIn.spec * lightSource.specular).rgb;
 		calculatedColor += (diffuseFactor * pIn.diff * lightSource.diffuse).rgb;
 	}
 	

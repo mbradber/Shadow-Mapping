@@ -22,7 +22,7 @@ void Cube::init(ID3D10Device* device, float scale)
 	numVerts = 24;
 	numFaces    = 36;
 
-	float specularPower = 100.0f;
+	float specularPower = 150.0f;
 
 	PosNormVertex vertices [] = 
 	{

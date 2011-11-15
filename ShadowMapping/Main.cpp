@@ -37,6 +37,7 @@ private:
 	Camera camera;
 	Cube cube;
 	Light lightSource;
+	float lightTheta;
 };
 
 ShadowMapping::ShadowMapping(HINSTANCE hi):
@@ -50,6 +51,8 @@ hInstance(hi)
 	lightSource.ambient = D3DXCOLOR(0.2f, 0.2f, 0.2f, 1.0f);
 	lightSource.diffuse = WHITE;
 	lightSource.specular = WHITE;
+
+	lightTheta = 0;
 }
 
 ShadowMapping::~ShadowMapping()
@@ -102,7 +105,6 @@ void ShadowMapping::buildLayout()
     {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D10_APPEND_ALIGNED_ELEMENT,
             D3D10_INPUT_PER_VERTEX_DATA, 0},
-
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D10_APPEND_ALIGNED_ELEMENT,
             D3D10_INPUT_PER_VERTEX_DATA, 0}
     };
@@ -129,6 +131,14 @@ void ShadowMapping::updateScene(float delta)
 	camera.Update(keystate, mouseState, delta);
 	//retrieve the view matrix from the camera object
 	viewMatrix = camera.GetCameraView();
+
+	//rotate the direction of the light
+	float xCoord = cosf(lightTheta);
+	float zCoord = sinf(lightTheta);
+	lightSource.direction = D3DXVECTOR4(xCoord, -1, zCoord, NULL);
+	lightTheta += delta;
+	//normalize the result
+	D3DXVec4Normalize(&lightSource.direction, &lightSource.direction);
 }
 
 void ShadowMapping::draw()
