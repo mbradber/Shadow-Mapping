@@ -1,15 +1,5 @@
 #include "Cube.h"
 
-Cube::Cube(void):
-numVerts(0), numFaces(0), pDevice(0), vb(0), ib(0)
-{
-}
-
-Cube::~Cube(void)
-{
-
-}
-
 void Cube::deallocate()
 {
 	pDevice = NULL;
@@ -79,51 +69,6 @@ void Cube::init(ID3D10Device* device, float scale)
         20, 21, 22,
         22, 21, 23,
     };
-	//pDevice = device;
- //
-	//numVerts = 8;
-	//numFaces = 12;
-
- //   PosColVertex vertices[] =
- //   {
-	//    PosColVertex(D3DXVECTOR3(-1.0f, -1.0f, -1.0f), WHITE),
-	//	PosColVertex(D3DXVECTOR3(-1.0f, +1.0f, -1.0f), BLACK),
-	//	PosColVertex(D3DXVECTOR3(+1.0f, +1.0f, -1.0f), RED),
-	//	PosColVertex(D3DXVECTOR3(+1.0f, -1.0f, -1.0f), GREEN),
-	//	PosColVertex(D3DXVECTOR3(-1.0f, -1.0f, +1.0f), BLUE),
-	//	PosColVertex(D3DXVECTOR3(-1.0f, +1.0f, +1.0f), YELLOW),
-	//	PosColVertex(D3DXVECTOR3(+1.0f, +1.0f, +1.0f), CYAN),
-	//	PosColVertex(D3DXVECTOR3(+1.0f, -1.0f, +1.0f), MAGENTA),
- //   };
-
-	//for(DWORD i = 0; i < numVerts; ++i)
-	//	vertices[i].pos *= scale;
-
-	//DWORD indices[] = {
-	//	// front face
-	//	0, 1, 2,
-	//	0, 2, 3,
-
-	//	// back face
-	//	4, 6, 5,
-	//	4, 7, 6,
-
-	//	// left face
-	//	4, 5, 1,
-	//	4, 1, 0,
-
-	//	// right face
-	//	3, 2, 6,
-	//	3, 6, 7,
-
-	//	// top face
-	//	1, 5, 6,
-	//	1, 6, 2,
-
-	//	// bottom face
-	//	4, 0, 3, 
-	//	4, 3, 7
-	//};
 
 	D3D10_BUFFER_DESC vbd;
     vbd.Usage = D3D10_USAGE_IMMUTABLE;
