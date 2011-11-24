@@ -12,9 +12,18 @@ struct Light
 
 //global variables
 float4x4 wvp;
+float4x4 lwvp;
 float4x4 worldMatrix;
 float3 eyePos;
 Light lightSource;
+Texture2D shadowMap;
+
+SamplerState shadowSample
+{
+	Filter = MIN_MAG_MIP_POINT;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
 
 struct vsOut
 {
@@ -23,6 +32,7 @@ struct vsOut
     float3 normalW : NORMAL;
     float4 diff	   : DIFFUSE;
     float4 spec    : SPECULAR;
+	float4 projTex : TEXCOORD0;
 };
 
 vsOut VS(float3 pos:POSITION, float3 norm:NORMAL, float4 diff:DIFFUSE,
@@ -34,8 +44,17 @@ vsOut VS(float3 pos:POSITION, float3 norm:NORMAL, float4 diff:DIFFUSE,
 	vOut.normalW = mul(float4(norm, 0.0f), worldMatrix).rgb;
 	vOut.diff = diff;
 	vOut.spec = spec;
+	vOut.projTex = mul(float4(pos, 1.0f), lwvp);
 
 	return vOut;
+}
+
+bool checkBounds(float4 proj)
+{
+	/*if(proj.x < -1 || proj.x > 1 || proj.y < -1 || proj.y > 1 || proj.z < 0)
+		return true;
+	else return false;	*/
+	return false;
 }
 
 float4 PS(vsOut pIn):SV_TARGET
@@ -62,7 +81,27 @@ float4 PS(vsOut pIn):SV_TARGET
 		calculatedColor += (sFactor * pIn.spec * lightSource.specular).rgb;
 		calculatedColor += (diffuseFactor * pIn.diff * lightSource.diffuse).rgb;
 	}
-	
+
+	float4 projC = float4(pIn.projTex);
+	//execute the homogenous divide
+	projC.xyz /= projC.w;
+
+	bool invalid = false;
+	if(projC.x < -1 || projC.x > 1 || projC.y < -1 || projC.y > 1 || projC.z < 0)
+		invalid = true;	
+
+	if(!invalid)
+	{
+		projC.x = 0.5f * projC.x + 0.5f;
+		projC.y = -1 * 0.5f * projC.y + 0.5f;
+
+		float depth = projC.z;
+		float sampleDepth = shadowMap.Sample(shadowSample, projC.xy).r;
+
+		if(depth > sampleDepth + 0.0007)
+			return float4(0, 0, 0, 1);
+	}
+
 	return float4(calculatedColor, 1.0f);
 }
 

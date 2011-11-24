@@ -5,6 +5,7 @@
 #include"Plane.h"
 #include"Lights.h"
 #include"LightEye.h"
+#include<sstream>
 
 class ShadowMapping: public DXApp
 {
@@ -56,6 +57,7 @@ private:
 
 	Camera camera;
 	Cube cube;
+	Cube cube1;
 	Plane plane;
 	LightEye lightEye;
 	Light lightSource;
@@ -77,6 +79,9 @@ private:
 	ID3D10EffectPass* shadowsPass;
 	D3D10_PASS_DESC shadowsDesc;
 	ID3D10EffectMatrixVariable* shadowsWVP;
+
+	ID3D10EffectMatrixVariable* fxLightWVP;
+	ID3D10EffectShaderResourceVariable* fxShadowMap;
 };
 
 ShadowMapping::ShadowMapping(HINSTANCE hi):
@@ -118,6 +123,7 @@ void ShadowMapping::init()
 	initDInput(hInstance, mainWindow);
 	setupShadowMap();
 	cube.init(mDevice, 1.0f);
+	cube1.init(mDevice, 2.0f);
 	plane.init(mDevice, 10.0f);
 	lightEye.init(mDevice, 2.0f);
 	//camera.init(D3DXVECTOR3(5, 10, -8), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
@@ -160,8 +166,8 @@ void ShadowMapping::setupShadowMap()
 
 	mDevice->CreateShaderResourceView(dm, &srDesc, &depthMapRV);
 
-	//dm->Release();
-	//dm = NULL;
+	dm->Release();
+	dm = NULL;
 }
 
 void ShadowMapping::handleResize()
@@ -205,6 +211,8 @@ void ShadowMapping::initFX()
 	pWorldMatrix = pGeoFX->GetVariableByName("worldMatrix")->AsMatrix();
 	fxEyePos = pGeoFX->GetVariableByName("eyePos");
 	fxLightSource = pGeoFX->GetVariableByName("lightSource");
+	fxLightWVP = pGeoFX->GetVariableByName("lwvp")->AsMatrix();
+	fxShadowMap = pGeoFX->GetVariableByName("shadowMap")->AsShaderResource();
 
 	//set up a handle to the light eye FX file vars
 	fxLightEyeWVP = pLightEyeFX->GetVariableByName("wvpMatrix")->AsMatrix();
@@ -280,9 +288,37 @@ void ShadowMapping::updateScene(float delta)
 	//normalize the result
 	D3DXVec4Normalize(&lightSource.direction, &lightSource.direction);
 
-	//build the light source's view matrix
-	D3DXVECTOR3 lightPos = D3DXVECTOR3(10 * xCoord, 0, 10 * zCoord);
-	D3DXMatrixLookAtLH(&lightEyeViewMatrix, &lightPos, &D3DXVECTOR3(0, 0, 0), &D3DXVECTOR3(0, 1, 0));
+//BUILD THE LIGHT SOURCE VIEW MATRIX
+
+	//first set the light height and radius
+	float lightHeight = 5;
+	float lightRadius = 10;
+	
+	//calculat the light source position and normalize the result
+	D3DXVECTOR3 lightUnit;
+	D3DXVECTOR3 lightPos(lightRadius * xCoord, lightHeight, lightRadius * zCoord);
+	D3DXVec3Normalize(&lightUnit, &lightPos);
+
+	//generate the vector to rotate about (the side vector of the light source)
+	D3DXVECTOR3 upVec(0, 1, 0);
+	D3DXVECTOR3 outVec(xCoord, 0, zCoord);
+	D3DXVECTOR3 sideVec;
+	D3DXVec3Cross(&sideVec, &upVec, &outVec);
+
+	//generate the matrix transform (the matrix to rotate about the side vector)
+	D3DXMATRIX rotationMat;
+	D3DXMatrixRotationAxis(&rotationMat, &sideVec, 3 * PI / 2);
+
+	//calculate the light source up vector and normalize the result
+	D3DXVECTOR4 lightUp;
+	D3DXVec3Transform(&lightUp, &lightPos, &rotationMat);
+	//lightUp *= -1;
+	D3DXVec4Normalize(&lightUp, &lightUp);
+
+	lightPos.x *= -1;
+	lightPos.z *= -1;
+	//build the view matrix
+	D3DXMatrixLookAtLH(&lightEyeViewMatrix, &lightPos, &D3DXVECTOR3(0, 0, 0), &D3DXVECTOR3(lightUp));
 }
 
 void ShadowMapping::draw()
@@ -299,7 +335,7 @@ void ShadowMapping::draw()
 	drawToSM();
 
 	//reset the render target
-	mDevice->OMSetRenderTargets(1, &rtView, dsView);
+	resetTargets();
 	mDevice->OMSetDepthStencilState(0, 0);
 	float blendFactors[] = {0.0f, 0.0f, 0.0f, 0.0f};
 	mDevice->OMSetBlendState(0, blendFactors, 0xffffffff);
@@ -307,6 +343,12 @@ void ShadowMapping::draw()
 	//set up the input assembler
 	mDevice->IASetInputLayout(pnVertexLayout);
 	mDevice->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	//pass the light world-view-projection matrix and the shadow map to the shader
+	D3DXMatrixIdentity(&worldMatrix);
+	D3DXMATRIX lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
+	fxShadowMap->SetResource(depthMapRV);
 
 	//calculate the world-view-projection matrix
 	D3DXMatrixIdentity(&worldMatrix);
@@ -321,7 +363,11 @@ void ShadowMapping::draw()
 	plane.draw();
 
 	//translate the cube up, so that it is on top of the plane
-	D3DXMatrixTranslation(&worldMatrix, 0, 1.0f, 0);
+	D3DXMatrixTranslation(&worldMatrix, -3, 1.0f, 0);
+
+	lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
+
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 	pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	pWVP->SetMatrix((float*)&wvpMatrix);
@@ -330,20 +376,33 @@ void ShadowMapping::draw()
 	pGeoPass->Apply(0);
 	cube.draw();
 
-	//switch the input layout so we can use textures
-	mDevice->IASetInputLayout(ptVertexLayout);
+	//set up the second cube
+	D3DXMatrixTranslation(&worldMatrix, 3, 1.0f, 0);
 
-	D3DXMatrixTranslation(&worldMatrix, 5, 2, 0);
+	lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
+
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
+	pWorldMatrix->SetMatrix((float*)&worldMatrix);
+	pWVP->SetMatrix((float*)&wvpMatrix);
 
-	fxLightEyeWVP->SetMatrix((float*)wvpMatrix);
-	fxLightEyeWorld->SetMatrix((float*)worldMatrix);
-	fxLightEyeDiffuse->SetResource(depthMapRV);
+	//draw the second cube
+	pGeoPass->Apply(0);
+	cube1.draw();
 
-	//draw the light's perspective
-	pLightEyePass->Apply(0);
-	//pGeoPass->Apply(0);
-	lightEye.draw();
+	//switch the input layout so we can use textures
+	//mDevice->IASetInputLayout(ptVertexLayout);
+
+	//D3DXMatrixTranslation(&worldMatrix, 5, 2, 0);
+	//wvpMatrix = worldMatrix * viewMatrix * projMatrix;
+
+	//fxLightEyeWVP->SetMatrix((float*)wvpMatrix);
+	//fxLightEyeWorld->SetMatrix((float*)worldMatrix);
+	//fxLightEyeDiffuse->SetResource(depthMapRV);
+
+	////draw the light's perspective
+	//pLightEyePass->Apply(0);
+	//lightEye.draw();
 
 	//present the back buffer
 	mSwapChain->Present(0, 0);
@@ -358,9 +417,6 @@ void ShadowMapping::drawToSM()
 	//calculate the world-view-projection matrix
 	D3DXMatrixIdentity(&worldMatrix);
 	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
-	//fxEyePos->SetRawValue(&camera.GetCameraPosition(), 0, sizeof(D3DXVECTOR3));
-	//fxLightSource->SetRawValue(&lightSource, 0, sizeof(Light));
-	//pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	shadowsWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the scene's plane
@@ -368,14 +424,21 @@ void ShadowMapping::drawToSM()
 	plane.draw();
 
 	//translate the cube up, so that it is on top of the plane
-	D3DXMatrixTranslation(&worldMatrix, 0, 1.0f, 0);
+	D3DXMatrixTranslation(&worldMatrix, -3, 1.0f, 0);
 	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
-	//pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	shadowsWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the cube
 	shadowsPass->Apply(0);
 	cube.draw();
+
+	D3DXMatrixTranslation(&worldMatrix, 3, 1.0f, 0);
+	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
+	shadowsWVP->SetMatrix((float*)&wvpMatrix);
+
+	//draw the second cube
+	shadowsPass->Apply(0);
+	cube1.draw();
 }
 
 
