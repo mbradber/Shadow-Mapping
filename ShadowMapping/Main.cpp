@@ -7,6 +7,7 @@
 #include"Lights.h"
 #include"LightEye.h"
 #include"Effect.h"
+#include"Slider.h"
 #include<sstream>
 
 class ShadowMapping: public DXApp
@@ -70,6 +71,8 @@ private:
 
 	//The camera
 	Camera camera;
+	//The slider
+	Slider slider;
 
 	//Light source variables
 	LightEye lightEye;
@@ -125,6 +128,7 @@ void ShadowMapping::init()
 	plane.init(mDevice, 8.0f);
 	tet1.init(mDevice, 1);
 	lightEye.init(mDevice, 1);
+	slider.initSprite(mDevice);
 	//camera.init(D3DXVECTOR3(5, 10, -8), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
 	camera.init(D3DXVECTOR3(0, 3, -6), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
 
@@ -180,6 +184,7 @@ void ShadowMapping::handleResize()
 	DXApp::handleResize();
 	D3DXMatrixPerspectiveFovLH(&projMatrix, 0.25 * PI, (float)CLIENT_WIDTH/CLIENT_HEIGHT, 1.0f, 1000.0f);
 	D3DXMatrixPerspectiveFovLH(&lightProjMatrix, PI / 4, (float)CLIENT_WIDTH/CLIENT_HEIGHT, 1.0f, 1000.0f);
+	slider.rebuildProjection(CLIENT_WIDTH, CLIENT_HEIGHT);
 }
 
 void ShadowMapping::initFX()
@@ -253,13 +258,15 @@ void ShadowMapping::updateScene(float delta)
 	camera.Update(keystate, mouseState, delta);
 	//retrieve the view matrix from the camera object
 	viewMatrix = camera.GetCameraView();
+	//update the slider
+	slider.update(keystate, delta);
 
 	//rotate the direction of the light
 	float xCoord = cosf(lightTheta);
 	float zCoord = sinf(lightTheta);
 	lightSource.direction = D3DXVECTOR4(xCoord, -1, zCoord, NULL);
-	lightTheta += delta;
-	if(lightTheta > 2*PI)
+	lightTheta += 0.05f * delta * slider.sliderPosX;
+	if(lightTheta > 8*PI)
 		lightTheta = 0;
 	//normalize the result
 	D3DXVec4Normalize(&lightSource.direction, &lightSource.direction);
@@ -384,6 +391,9 @@ void ShadowMapping::draw()
 	//draw the light's perspective
 	lightEyeFX.getPass()->Apply(0);
 	lightEye.draw();
+
+	//draw the slider
+	slider.draw();
 
 	//present the back buffer
 	mSwapChain->Present(0, 0);
