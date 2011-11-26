@@ -49,14 +49,6 @@ vsOut VS(float3 pos:POSITION, float3 norm:NORMAL, float4 diff:DIFFUSE,
 	return vOut;
 }
 
-bool checkBounds(float4 proj)
-{
-	/*if(proj.x < -1 || proj.x > 1 || proj.y < -1 || proj.y > 1 || proj.z < 0)
-		return true;
-	else return false;	*/
-	return false;
-}
-
 float4 PS(vsOut pIn):SV_TARGET
 {
 	float3 calculatedColor = float3(0, 0, 0);
@@ -86,12 +78,12 @@ float4 PS(vsOut pIn):SV_TARGET
 	//execute the homogenous divide
 	projC.xyz /= projC.w;
 
-	bool invalid = false;
+	/*bool invalid = false;
 	if(projC.x < -1 || projC.x > 1 || projC.y < -1 || projC.y > 1 || projC.z < 0)
-		invalid = true;	
+		invalid = true;	*/
 
-	if(!invalid)
-	{
+	//if(!invalid)
+	//{
 		projC.x = 0.5f * projC.x + 0.5f;
 		projC.y = -1 * 0.5f * projC.y + 0.5f;
 
@@ -99,8 +91,8 @@ float4 PS(vsOut pIn):SV_TARGET
 		float sampleDepth = shadowMap.Sample(shadowSample, projC.xy).r;
 
 		if(depth > sampleDepth + 0.0007)
-			return float4(0, 0, 0, 1);
-	}
+			return pIn.diff * lightSource.ambient;
+	//}
 
 	return float4(calculatedColor, 1.0f);
 }

@@ -48,6 +48,10 @@ void Cube::init(ID3D10Device* device, float scale)
         PosNormVertex(D3DXVECTOR3(-1.0f, 1.0f, 1.0f), D3DXVECTOR3(-1.0f, 0.0f, 0.0f), RED, D3DXCOLOR(1, 1, 1, specularPower)),
 	};
 
+	//scale the geometry
+	for(int i = 0; i < numVerts; ++i)
+		vertices[i].pos *= scale;
+
 	DWORD indices[] = 
     {
 		//face 1

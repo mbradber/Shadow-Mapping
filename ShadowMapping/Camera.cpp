@@ -3,7 +3,7 @@
 #include<cmath>
 
 Camera::Camera():
-maxPitch(PI / 4), currentPitch(0), movementBuffer(3), deltaTime(0)
+maxPitch(PI / 2), currentPitch(0), movementBuffer(3), deltaTime(0)
 {
 }
 

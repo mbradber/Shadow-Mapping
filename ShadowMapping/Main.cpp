@@ -3,8 +3,10 @@
 #include"Camera.h"
 #include"Cube.h"
 #include"Plane.h"
+#include"Tetrahedron.h"
 #include"Lights.h"
 #include"LightEye.h"
+#include"Effect.h"
 #include<sstream>
 
 class ShadowMapping: public DXApp
@@ -26,62 +28,58 @@ private:
 	HINSTANCE hInstance;
 	
 	//Effect variables for geo FX
-	D3DXMATRIX worldMatrix, viewMatrix, projMatrix, wvpMatrix;
+	FX geoFX;
+	FX lightEyeFX;
+	FX shadowsFX;
+
+	//The scene objects
+	Cube cube1;
+	Cube cube2;
+	Plane plane;
+	Tetrahedron tet1;
+
+	//Matrices...
+	D3DXMATRIX worldMatrix, viewMatrix, projMatrix, wvpMatrix, 
+		lightEyeWVP, lightEyeViewMatrix, lightProjMatrix;
+
+	//Handles to the Geometry.fx vars
 	ID3D10EffectMatrixVariable* pWVP;
 	ID3D10EffectMatrixVariable* pWorldMatrix;
+	ID3D10EffectMatrixVariable* fxLightWVP;
 	ID3D10EffectVariable* fxEyePos;
 	ID3D10EffectVariable* fxLightSource;
-
-	//Effect variables for light eye FX
+	ID3D10EffectShaderResourceVariable* fxShadowMap;
+	
+	//Handles to the LightEye.fx vars
 	ID3D10EffectMatrixVariable* fxLightEyeWVP;
 	ID3D10EffectMatrixVariable* fxLightEyeWorld;
 	ID3D10EffectShaderResourceVariable* fxLightEyeDiffuse;
 
-	ID3D10Effect* pGeoFX;
-	ID3D10EffectTechnique* pGeoTechnique;
-	ID3D10EffectPass* pGeoPass;
-	D3D10_PASS_DESC geoPassDesc;
+	//Handles to the Depth.fx vars
+	ID3D10EffectMatrixVariable* shadowsWVP;
 
-	ID3D10Effect* pLightEyeFX;
-	ID3D10EffectTechnique* pLightEyeTechnique;
-	ID3D10EffectPass* pLightEyePass;
-	D3D10_PASS_DESC lightEyePassDesc;
-
-	//input layouts
+	//Input layouts
 	ID3D10InputLayout* pnVertexLayout;
 	ID3D10InputLayout* ptVertexLayout;
 	ID3D10InputLayout* pcVertexLayout;
 	ID3D10InputLayout* smVertexLayout;
 
+	//Usable textures
 	ID3D10ShaderResourceView* boxDiffuseMapRV;
+	ID3D10ShaderResourceView* grassDiffuseMapRV;
 
+	//The camera
 	Camera camera;
-	Cube cube;
-	Cube cube1;
-	Plane plane;
+
+	//Light source variables
 	LightEye lightEye;
 	Light lightSource;
 	float lightTheta;
 
 	//shadow mapping variables
-	ID3D10ShaderResourceView* colorMapRV;
-	ID3D10RenderTargetView* colorMap;
-
 	ID3D10ShaderResourceView* depthMapRV;
 	ID3D10DepthStencilView* depthMap;
-
 	D3D10_VIEWPORT smViewport;
-
-	D3DXMATRIX lightEyeWVP, lightEyeViewMatrix;
-
-	ID3D10Effect* shadowsFX;
-	ID3D10EffectTechnique* shadowsTechnique;
-	ID3D10EffectPass* shadowsPass;
-	D3D10_PASS_DESC shadowsDesc;
-	ID3D10EffectMatrixVariable* shadowsWVP;
-
-	ID3D10EffectMatrixVariable* fxLightWVP;
-	ID3D10EffectShaderResourceVariable* fxShadowMap;
 };
 
 ShadowMapping::ShadowMapping(HINSTANCE hi):
@@ -122,12 +120,13 @@ void ShadowMapping::init()
 	buildLayout();
 	initDInput(hInstance, mainWindow);
 	setupShadowMap();
-	cube.init(mDevice, 1.0f);
-	cube1.init(mDevice, 2.0f);
-	plane.init(mDevice, 10.0f);
-	lightEye.init(mDevice, 2.0f);
+	cube1.init(mDevice, 0.5f);
+	cube2.init(mDevice, 0.8f);
+	plane.init(mDevice, 8.0f);
+	tet1.init(mDevice, 1);
+	lightEye.init(mDevice, 1);
 	//camera.init(D3DXVECTOR3(5, 10, -8), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
-	camera.init(D3DXVECTOR3(0, 0, -10), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
+	camera.init(D3DXVECTOR3(0, 3, -6), D3DXVECTOR3(0, 0, 0), D3DXVECTOR3(0, 1, 0));
 
 	this->handleResize();
 	gameTimer.start();
@@ -135,6 +134,7 @@ void ShadowMapping::init()
 
 void ShadowMapping::setupShadowMap()
 {
+	//fill out a texture description
 	ID3D10Texture2D* dm = NULL;
 	D3D10_TEXTURE2D_DESC desc;
 	desc.Width = 800;
@@ -149,21 +149,26 @@ void ShadowMapping::setupShadowMap()
 	desc.CPUAccessFlags = 0;
 	desc.MiscFlags = 0;
 
+	//create a texture to serve as our new depth map
 	mDevice->CreateTexture2D(&desc, 0, &dm);
 
+	//fill out a depth-stencil view description
 	D3D10_DEPTH_STENCIL_VIEW_DESC dsDesc;
 	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsDesc.ViewDimension = D3D10_DSV_DIMENSION_TEXTURE2D;
 	dsDesc.Texture2D.MipSlice = 0;
 	
+	//create a depth-stencil view to the depth map texture
 	mDevice->CreateDepthStencilView(dm, &dsDesc, &depthMap);
 
+	//fill out a shader resource view so that we can bind the depth map
 	D3D10_SHADER_RESOURCE_VIEW_DESC srDesc;
 	srDesc.Format = DXGI_FORMAT_R32_FLOAT;
 	srDesc.ViewDimension = D3D10_SRV_DIMENSION_TEXTURE2D;
 	srDesc.Texture2D.MipLevels = desc.MipLevels;
 	srDesc.Texture2D.MostDetailedMip = 0;
 
+	//create the shader resource to bind to the pipeline
 	mDevice->CreateShaderResourceView(dm, &srDesc, &depthMapRV);
 
 	dm->Release();
@@ -173,61 +178,32 @@ void ShadowMapping::setupShadowMap()
 void ShadowMapping::handleResize()
 {
 	DXApp::handleResize();
-	D3DXMatrixPerspectiveFovLH(&projMatrix, 0.25f*PI, (float)CLIENT_WIDTH/CLIENT_HEIGHT, 1.0f, 1000.0f);
+	D3DXMatrixPerspectiveFovLH(&projMatrix, 0.25 * PI, (float)CLIENT_WIDTH/CLIENT_HEIGHT, 1.0f, 1000.0f);
+	D3DXMatrixPerspectiveFovLH(&lightProjMatrix, PI / 4, (float)CLIENT_WIDTH/CLIENT_HEIGHT, 1.0f, 1000.0f);
 }
 
 void ShadowMapping::initFX()
 {
-	ID3D10Blob* shaderErrors = 0;
-
-	D3DX10CreateEffectFromFile(L"Geometry.fx", 0, 0, "fx_4_0", 0, 0, mDevice, 0, 0, 
-		&pGeoFX, &shaderErrors, 0);
-
-	if(shaderErrors)
-		MessageBoxA(0, (char*)shaderErrors->GetBufferPointer(), 0, 0);
-
-	D3DX10CreateEffectFromFile(L"LightEye.fx", 0, 0, "fx_4_0", 0, 0, mDevice, 0, 0, 
-		&pLightEyeFX, &shaderErrors, 0);
-
-	if(shaderErrors)
-		MessageBoxA(0, (char*)shaderErrors->GetBufferPointer(), 0, 0);
-
-	D3DX10CreateEffectFromFile(L"Depth.fx", 0, 0, "fx_4_0", 0, 0, mDevice, 0, 0, 
-		&shadowsFX, &shaderErrors, 0);
-
-	if(shaderErrors)
-		MessageBoxA(0, (char*)shaderErrors->GetBufferPointer(), 0, 0);
-
-	pGeoTechnique = pGeoFX->GetTechniqueByIndex(0);
-	pGeoPass = pGeoTechnique->GetPassByIndex(0);
-	pGeoPass->GetDesc(&geoPassDesc);
-
-	pLightEyeTechnique = pLightEyeFX->GetTechniqueByIndex(0);
-	pLightEyePass = pLightEyeTechnique->GetPassByIndex(0);
-	pLightEyePass->GetDesc(&lightEyePassDesc);
+	//initialize all of the effect files
+	geoFX.init(mDevice, L"Geometry.fx");
+	lightEyeFX.init(mDevice, L"LightEye.fx");
+	shadowsFX.init(mDevice, L"Depth.fx");
 
 	//set up a handle to the geometry FX file vars
-	pWVP = pGeoFX->GetVariableByName("wvp")->AsMatrix();
-	pWorldMatrix = pGeoFX->GetVariableByName("worldMatrix")->AsMatrix();
-	fxEyePos = pGeoFX->GetVariableByName("eyePos");
-	fxLightSource = pGeoFX->GetVariableByName("lightSource");
-	fxLightWVP = pGeoFX->GetVariableByName("lwvp")->AsMatrix();
-	fxShadowMap = pGeoFX->GetVariableByName("shadowMap")->AsShaderResource();
+	pWVP = geoFX.getVariable("wvp")->AsMatrix();
+	pWorldMatrix = geoFX.getVariable("worldMatrix")->AsMatrix();
+	fxEyePos = geoFX.getVariable("eyePos");
+	fxLightSource = geoFX.getVariable("lightSource");
+	fxLightWVP = geoFX.getVariable("lwvp")->AsMatrix();
+	fxShadowMap = geoFX.getVariable("shadowMap")->AsShaderResource();
 
 	//set up a handle to the light eye FX file vars
-	fxLightEyeWVP = pLightEyeFX->GetVariableByName("wvpMatrix")->AsMatrix();
-	fxLightEyeWorld = pLightEyeFX->GetVariableByName("worldMatrix")->AsMatrix();
-	fxLightEyeDiffuse = pLightEyeFX->GetVariableByName("diffuseMap")->AsShaderResource();
+	fxLightEyeWVP = lightEyeFX.getVariable("wvpMatrix")->AsMatrix();
+	fxLightEyeWorld = lightEyeFX.getVariable("worldMatrix")->AsMatrix();
+	fxLightEyeDiffuse = lightEyeFX.getVariable("diffuseMap")->AsShaderResource();
 
-	shadowsTechnique = shadowsFX->GetTechniqueByIndex(0);
-	shadowsPass = shadowsTechnique->GetPassByIndex(0);
-	shadowsPass->GetDesc(&shadowsDesc);
-	shadowsWVP = shadowsFX->GetVariableByName("wvp")->AsMatrix();
-
-	//create a resource view from the box image
-	HRESULT hr = D3DX10CreateShaderResourceViewFromFile(mDevice, L"WoodCrate02.dds", 0, 0, &boxDiffuseMapRV, 0);
-	if(FAILED(hr))
-		MessageBoxA(0, "Failed to load texture.", 0, 0);
+	//set up handle to the depth FX file vars
+	shadowsWVP = shadowsFX.getVariable("wvp")->AsMatrix();
 }
 
 void ShadowMapping::buildLayout()
@@ -254,17 +230,17 @@ void ShadowMapping::buildLayout()
 		{"SPECULAR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 40, D3D10_INPUT_PER_VERTEX_DATA, 0}
 	};
 
-    mDevice->CreateInputLayout(posNormLayout, 4, geoPassDesc.pIAInputSignature,
-		geoPassDesc.IAInputSignatureSize, &pnVertexLayout);
+	mDevice->CreateInputLayout(posNormLayout, 4, geoFX.getSignature(),
+		geoFX.getSigSize(), &pnVertexLayout);
 
-	mDevice->CreateInputLayout(posColLayout, 2, geoPassDesc.pIAInputSignature,
-		geoPassDesc.IAInputSignatureSize, &pcVertexLayout);
+	mDevice->CreateInputLayout(posColLayout, 2, geoFX.getSignature(),
+		geoFX.getSigSize(), &pcVertexLayout);
 
-    mDevice->CreateInputLayout(posTexLayout, 2, lightEyePassDesc.pIAInputSignature,
-		lightEyePassDesc.IAInputSignatureSize, &ptVertexLayout);
+	mDevice->CreateInputLayout(posTexLayout, 2, lightEyeFX.getSignature(),
+		lightEyeFX.getSigSize(), &ptVertexLayout);
 
-	mDevice->CreateInputLayout(posNormLayout, 4, shadowsDesc.pIAInputSignature,
-		shadowsDesc.IAInputSignatureSize, &smVertexLayout);
+	mDevice->CreateInputLayout(posNormLayout, 4, shadowsFX.getSignature(),
+		shadowsFX.getSigSize(), &smVertexLayout);
 }
 
 void ShadowMapping::updateScene(float delta)
@@ -293,39 +269,24 @@ void ShadowMapping::updateScene(float delta)
 	//first set the light height and radius
 	float lightHeight = 5;
 	float lightRadius = 10;
-	
+
 	//calculat the light source position and normalize the result
-	D3DXVECTOR3 lightUnit;
 	D3DXVECTOR3 lightPos(lightRadius * xCoord, lightHeight, lightRadius * zCoord);
-	D3DXVec3Normalize(&lightUnit, &lightPos);
-
-	//generate the vector to rotate about (the side vector of the light source)
-	D3DXVECTOR3 upVec(0, 1, 0);
-	D3DXVECTOR3 outVec(xCoord, 0, zCoord);
-	D3DXVECTOR3 sideVec;
-	D3DXVec3Cross(&sideVec, &upVec, &outVec);
-
-	//generate the matrix transform (the matrix to rotate about the side vector)
-	D3DXMATRIX rotationMat;
-	D3DXMatrixRotationAxis(&rotationMat, &sideVec, 3 * PI / 2);
-
-	//calculate the light source up vector and normalize the result
-	D3DXVECTOR4 lightUp;
-	D3DXVec3Transform(&lightUp, &lightPos, &rotationMat);
-	//lightUp *= -1;
-	D3DXVec4Normalize(&lightUp, &lightUp);
-
 	lightPos.x *= -1;
 	lightPos.z *= -1;
-	//build the view matrix
-	D3DXMatrixLookAtLH(&lightEyeViewMatrix, &lightPos, &D3DXVECTOR3(0, 0, 0), &D3DXVECTOR3(lightUp));
+
+	D3DXVECTOR3 lightUpPoint((lightRadius - 2) * xCoord, lightHeight + 1, (lightRadius - 2) * zCoord);
+	lightUpPoint = lightUpPoint - lightPos;
+	D3DXVec3Normalize(&lightUpPoint, &lightUpPoint);
+	//build the view matrix of the light source
+	D3DXMatrixLookAtLH(&lightEyeViewMatrix, &lightPos, &D3DXVECTOR3(0, 0, 0), &D3DXVECTOR3(lightUpPoint));
 }
 
 void ShadowMapping::draw()
 {
 	DXApp::draw();
 
-	//start drawing to shadow map
+	//switch the render target to draw to the depth map (shadow map)
 	ID3D10RenderTargetView* renderTargets[1] = {NULL};
 	mDevice->OMSetRenderTargets(1, renderTargets, depthMap);
 	mDevice->OMSetDepthStencilState(0, 0);
@@ -334,11 +295,9 @@ void ShadowMapping::draw()
 
 	drawToSM();
 
-	//reset the render target
+	//reset the render target to the back buffer
 	resetTargets();
 	mDevice->OMSetDepthStencilState(0, 0);
-	float blendFactors[] = {0.0f, 0.0f, 0.0f, 0.0f};
-	mDevice->OMSetBlendState(0, blendFactors, 0xffffffff);
 
 	//set up the input assembler
 	mDevice->IASetInputLayout(pnVertexLayout);
@@ -346,11 +305,11 @@ void ShadowMapping::draw()
 
 	//pass the light world-view-projection matrix and the shadow map to the shader
 	D3DXMatrixIdentity(&worldMatrix);
-	D3DXMATRIX lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+	D3DXMATRIX lightEyeWVP = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
 	fxShadowMap->SetResource(depthMapRV);
 
-	//calculate the world-view-projection matrix
+	//calculate and update the world-view-projection matrix for the plane (ground)
 	D3DXMatrixIdentity(&worldMatrix);
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 	fxEyePos->SetRawValue(&camera.GetCameraPosition(), 0, sizeof(D3DXVECTOR3));
@@ -359,50 +318,72 @@ void ShadowMapping::draw()
 	pWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the scene's plane
-	pGeoPass->Apply(0);
+	geoFX.getPass()->Apply(0);
 	plane.draw();
 
-	//translate the cube up, so that it is on top of the plane
-	D3DXMatrixTranslation(&worldMatrix, -3, 1.0f, 0);
+	//For the first cube...
+		//translate it up so that it is on top of the plane
+	D3DXMatrixTranslation(&worldMatrix, -3, 2, 0);
 
-	lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+	    //calculate and update the wvp matrix of this cube for the light source
+	lightEyeWVP = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
 
+	    //calculate and update the wvp matrix of this cube for the camera
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 	pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	pWVP->SetMatrix((float*)&wvpMatrix);
 
-	//draw the cube
-	pGeoPass->Apply(0);
-	cube.draw();
+	//draw the first cube
+	geoFX.getPass()->Apply(0);
+	cube1.draw();
 
-	//set up the second cube
-	D3DXMatrixTranslation(&worldMatrix, 3, 1.0f, 0);
+	//For the second cube...
+		//translate it up so that it is on top of the plane
+	D3DXMatrixTranslation(&worldMatrix, 3, 1, 0);
 
-	lightEyeWVP = worldMatrix * lightEyeViewMatrix * projMatrix;
+		//calculate and update the wvp matrix of this cube for the light source
+	lightEyeWVP = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
 
+		//calculate and update the wvp matrix of this cube for the camera
 	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 	pWorldMatrix->SetMatrix((float*)&worldMatrix);
 	pWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the second cube
-	pGeoPass->Apply(0);
-	cube1.draw();
+	geoFX.getPass()->Apply(0);
+	cube2.draw();
+
+	//build a transformation matrix for the tetrahedron
+	D3DXMatrixTranslation(&worldMatrix, 0, 1, 0);
+
+	//calculate and update the wvp matrix of this tetrahedron for the light source
+	lightEyeWVP = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
+	fxLightWVP->SetMatrix((float*)&lightEyeWVP);
+
+	//calculate and update the wvp matrix of this tetrahedron for the camera
+	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
+	pWorldMatrix->SetMatrix((float*)&worldMatrix);
+	pWVP->SetMatrix((float*)&wvpMatrix);
+
+	//draw the tetrahedron
+	geoFX.getPass()->Apply(0);
+	tet1.draw();
 
 	//switch the input layout so we can use textures
-	//mDevice->IASetInputLayout(ptVertexLayout);
+	mDevice->IASetInputLayout(ptVertexLayout);
 
-	//D3DXMatrixTranslation(&worldMatrix, 5, 2, 0);
-	//wvpMatrix = worldMatrix * viewMatrix * projMatrix;
+	D3DXMatrixTranslation(&worldMatrix, 7, 1, -8);
+	wvpMatrix = worldMatrix * viewMatrix * projMatrix;
 
-	//fxLightEyeWVP->SetMatrix((float*)wvpMatrix);
-	//fxLightEyeWorld->SetMatrix((float*)worldMatrix);
-	//fxLightEyeDiffuse->SetResource(depthMapRV);
+	fxLightEyeWVP->SetMatrix((float*)wvpMatrix);
+	fxLightEyeWorld->SetMatrix((float*)worldMatrix);
+	fxLightEyeDiffuse->SetResource(depthMapRV);
 
-	////draw the light's perspective
-	//pLightEyePass->Apply(0);
-	//lightEye.draw();
+	//draw the light's perspective
+	lightEyeFX.getPass()->Apply(0);
+	lightEye.draw();
 
 	//present the back buffer
 	mSwapChain->Present(0, 0);
@@ -416,31 +397,40 @@ void ShadowMapping::drawToSM()
 
 	//calculate the world-view-projection matrix
 	D3DXMatrixIdentity(&worldMatrix);
-	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
+	wvpMatrix = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	shadowsWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the scene's plane
-	shadowsPass->Apply(0);
+	shadowsFX.getPass()->Apply(0);
 	plane.draw();
 
-	//translate the cube up, so that it is on top of the plane
+	//translate the cube up and to the left
 	D3DXMatrixTranslation(&worldMatrix, -3, 1.0f, 0);
-	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
+	wvpMatrix = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	shadowsWVP->SetMatrix((float*)&wvpMatrix);
 
-	//draw the cube
-	shadowsPass->Apply(0);
-	cube.draw();
+	//draw the first cube
+	shadowsFX.getPass()->Apply(0);
+	cube1.draw();
 
+	//translate the cube up and to the right
 	D3DXMatrixTranslation(&worldMatrix, 3, 1.0f, 0);
-	wvpMatrix = worldMatrix * lightEyeViewMatrix * projMatrix;
+	wvpMatrix = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
 	shadowsWVP->SetMatrix((float*)&wvpMatrix);
 
 	//draw the second cube
-	shadowsPass->Apply(0);
-	cube1.draw();
-}
+	shadowsFX.getPass()->Apply(0);
+	cube2.draw();
 
+	//translate the tetrahedron up
+	D3DXMatrixTranslation(&worldMatrix, 0, 1, 0);
+	wvpMatrix = worldMatrix * lightEyeViewMatrix * lightProjMatrix;
+	shadowsWVP->SetMatrix((float*)&wvpMatrix);
+
+	//draw the tetrahedron
+	shadowsFX.getPass()->Apply(0);
+	tet1.draw();
+}
 
 int WINAPI WinMain(HINSTANCE hi, HINSTANCE hpi, PSTR pcl, int sc)
 {
